@@ -112,6 +112,7 @@ public struct Module {
             ?? moduleName(fromArguments: xcodeBuildArguments)
 
         // Executing normal build
+        fputs("文秋 \(results)", stdout)
         if Self.results == nil {
             Self.results = XcodeBuild.build(arguments: xcodeBuildArguments, inPath: path)
         }
