@@ -119,35 +119,39 @@ public struct Module {
             fputs("Saved `xcodebuild` log file: \(file.path)\n", stderr)
             return nil
         }
-        if let output = results.string,
-            let arguments = parseCompilerArguments(xcodebuildOutput: output, language: .swift, moduleName: name),
-            let moduleName = moduleName(fromArguments: arguments) {
+        
+        let modules = name.components(separatedBy: ",")
+        for module in modules {
+            if let output = results.string,
+               let arguments = parseCompilerArguments(xcodebuildOutput: output, language: .swift, moduleName: module),
+               let moduleName = moduleName(fromArguments: arguments) {
+                self.init(name: moduleName, compilerArguments: arguments)
+                return
+            }
+            // Check New Build System is used
+            fputs("Checking xcodebuild -showBuildSettings\n", stderr)
+            if let projectTempRoot = buildSettings?.firstBuildSettingValue(for: { $0.PROJECT_TEMP_ROOT }),
+               let arguments = checkNewBuildSystem(in: projectTempRoot, moduleName: module),
+               let moduleName = moduleName(fromArguments: arguments) {
+                self.init(name: moduleName, compilerArguments: arguments)
+                return
+            }
+            // Executing `clean build` is a fallback.
+            let xcodeBuildOutput = XcodeBuild.cleanBuild(arguments: xcodeBuildArguments, inPath: path).string ?? ""
+            guard let arguments = parseCompilerArguments(xcodebuildOutput: xcodeBuildOutput, language: .swift, moduleName: module) else {
+                fputs("Could not parse compiler arguments from `xcodebuild` output.\n", stderr)
+                fputs("Please confirm that `xcodebuild` is building a Swift module.\n", stderr)
+                let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("xcodebuild-\(NSUUID().uuidString).log")
+                _ = try? xcodeBuildOutput.data(using: .utf8)?.write(to: file)
+                fputs("Saved `xcodebuild` log file: \(file.path)\n", stderr)
+                return nil
+            }
+            guard let moduleName = moduleName(fromArguments: arguments) else {
+                fputs("Could not parse module name from compiler arguments.\n", stderr)
+                return nil
+            }
             self.init(name: moduleName, compilerArguments: arguments)
-            return
         }
-        // Check New Build System is used
-        fputs("Checking xcodebuild -showBuildSettings\n", stderr)
-        if let projectTempRoot = buildSettings?.firstBuildSettingValue(for: { $0.PROJECT_TEMP_ROOT }),
-            let arguments = checkNewBuildSystem(in: projectTempRoot, moduleName: name),
-            let moduleName = moduleName(fromArguments: arguments) {
-            self.init(name: moduleName, compilerArguments: arguments)
-            return
-        }
-        // Executing `clean build` is a fallback.
-        let xcodeBuildOutput = XcodeBuild.cleanBuild(arguments: xcodeBuildArguments, inPath: path).string ?? ""
-        guard let arguments = parseCompilerArguments(xcodebuildOutput: xcodeBuildOutput, language: .swift, moduleName: name) else {
-            fputs("Could not parse compiler arguments from `xcodebuild` output.\n", stderr)
-            fputs("Please confirm that `xcodebuild` is building a Swift module.\n", stderr)
-            let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("xcodebuild-\(NSUUID().uuidString).log")
-            _ = try? xcodeBuildOutput.data(using: .utf8)?.write(to: file)
-            fputs("Saved `xcodebuild` log file: \(file.path)\n", stderr)
-            return nil
-        }
-        guard let moduleName = moduleName(fromArguments: arguments) else {
-            fputs("Could not parse module name from compiler arguments.\n", stderr)
-            return nil
-        }
-        self.init(name: moduleName, compilerArguments: arguments)
     }
 
     /**
