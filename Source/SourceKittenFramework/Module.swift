@@ -10,7 +10,7 @@ public struct Module {
     /// Source files to be documented in this Module.
     public let sourceFiles: [String]
 
-    public static let results: Exec.Results? = nil
+    static var results: Exec.Results? = nil
 
     /// Documentation for this Module. Typically expensive computed property.
     public var docs: [SwiftDocs] {
@@ -112,19 +112,23 @@ public struct Module {
             ?? moduleName(fromArguments: xcodeBuildArguments)
 
         // Executing normal build
-        fputs("文秋 \(results)", stdout)
         if Self.results == nil {
             Self.results = XcodeBuild.build(arguments: xcodeBuildArguments, inPath: path)
         }
-        if Self.results.terminationStatus != 0 {
+        
+        guard let results = Self.results else {
+            fputs("No `xcodebuild` results.\n", stderr)
+            return nil
+        }
+        if results.terminationStatus != 0 {
             fputs("Could not successfully run `xcodebuild`.\n", stderr)
             fputs("Please check the build arguments.\n", stderr)
             let file = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("xcodebuild-\(NSUUID().uuidString).log")
-            _ = try? Self.results.data.write(to: file)
+            _ = try? results.data.write(to: file)
             fputs("Saved `xcodebuild` log file: \(file.path)\n", stderr)
             return nil
         }
-        if let output = Self.results.string,
+        if let output = results.string,
             let arguments = parseCompilerArguments(xcodebuildOutput: output, language: .swift, moduleName: name),
             let moduleName = moduleName(fromArguments: arguments) {
             self.init(name: moduleName, compilerArguments: arguments)
